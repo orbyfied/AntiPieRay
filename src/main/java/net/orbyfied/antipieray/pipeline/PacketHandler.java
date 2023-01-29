@@ -20,6 +20,7 @@ import net.orbyfied.antipieray.reflect.UnsafeReflector;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @SuppressWarnings({ "rawtypes" })
 public class PacketHandler extends ChannelDuplexHandler {
@@ -36,16 +37,16 @@ public class PacketHandler extends ChannelDuplexHandler {
 
     private static final UnsafeField FIELD_ChunkDataPacket_blockEntitiesData =
             UnsafeReflector.get().getField(ClientboundLevelChunkPacketData.class,
-                    "blockEntitiesData");
+                    "d");
     private static final UnsafeField FIELD_ChunkDataPacket_BEI_packedXZ =
             UnsafeReflector.get().getField(ClientboundLevelChunkPacketData.class.getName() + "$a",
-                    "packedXZ");
+                    "a");
     private static final UnsafeField FIELD_ChunkDataPacket_BEI_y =
             UnsafeReflector.get().getField(ClientboundLevelChunkPacketData.class.getName() + "$a",
-                    "y");
+                    "b");
     private static final UnsafeField FIELD_ChunkDataPacket_BEI_type =
             UnsafeReflector.get().getField(ClientboundLevelChunkPacketData.class.getName() + "$a",
-                    "type");
+                    "c");
 
     //////////////////////////////////////////
 
@@ -75,6 +76,38 @@ public class PacketHandler extends ChannelDuplexHandler {
         }
     }
 
+    // the world access
+    FastRayCast.BlockAccess blockAccess;
+    // if any entities have been
+    // hidden for this player
+    // TODO: use position instead of just checking
+    //  a boolean
+    AtomicBoolean hidden = new AtomicBoolean(false);
+
+    /**
+     * Get if any tile entities have been hidden
+     * in range of the given chunk by position.
+     *
+     * @param cx The chunk X.
+     * @param cz The chunk Z.
+     * @return If any block entities have been hidden in range of this chunk.
+     */
+    public boolean anyHidden(int cx, int cz) {
+        return hidden.get();
+    }
+
+    /**
+     * Mark that a tile entity has been hidden
+     * in the given chunk.
+     *
+     * @param cx The chunk X.
+     * @param cz The chunk Y.
+     * @param value The value to set.
+     */
+    public void markHidden(int cx, int cz, boolean value) {
+        hidden.set(true);
+    }
+
     /**
      * Checks if the given packet should be sent.
      *
@@ -82,6 +115,8 @@ public class PacketHandler extends ChannelDuplexHandler {
      * @return True/false. If false it will be dropped.
      */
     public boolean allowPacket(Object objectPacket) {
+        blockAccess = FastRayCast.blockAccessOf(player.getLevel());
+
         // check packet type
         // and get data
         if (objectPacket instanceof ClientboundBlockEntityDataPacket packet) {
@@ -90,7 +125,7 @@ public class PacketHandler extends ChannelDuplexHandler {
                 return true;
             }
 
-            return checkBlock(packet.getPos().getCenter());
+            return checkBlockOrMark(packet.getPos().getCenter());
         } else if (objectPacket instanceof ClientboundLevelChunkWithLightPacket withLightPacket) {
             // get packet
             ClientboundLevelChunkPacketData packet = withLightPacket.getChunkData();
@@ -123,7 +158,7 @@ public class PacketHandler extends ChannelDuplexHandler {
                 long z = cz + SectionPos.sectionRelative(packedXZ);
 
                 // check block
-                if (!checkBlock(new BlockPos(x, y, z).getCenter())) {
+                if (!checkBlockOrMark(new BlockPos(x, y, z).getCenter())) {
                     iterator.remove();
                 }
             }
@@ -146,7 +181,7 @@ public class PacketHandler extends ChannelDuplexHandler {
                     continue;
 
                 // remove state of blocked
-                if (!checkBlock(sectionPos.relativeToBlockPos(positions[i]).getCenter())) {
+                if (!checkBlockOrMark(sectionPos.relativeToBlockPos(positions[i]).getCenter())) {
                     states[i] = Blocks.AIR.defaultBlockState();
                 }
             }
@@ -158,12 +193,33 @@ public class PacketHandler extends ChannelDuplexHandler {
                 return true;
             }
 
-            return checkBlock(packet.getPos().getCenter());
+            return checkBlockOrMark(packet.getPos().getCenter());
         } else {
             return true;
         }
     }
 
+    // check given block with checkBlock(Vec3)
+    // and mark as hidden if false
+    public boolean checkBlockOrMark(Vec3 bPos) {
+        boolean v = checkBlock(bPos);
+        if (!v) {
+            int cx = (int)(((long)bPos.x) >> 4);
+            int cz = (int)(((long)bPos.z) >> 4);
+
+            markHidden(cx, cz, true);
+        }
+
+        return v;
+    }
+
+    /**
+     * Checks if a given block position should
+     * be rendered to the player.
+     *
+     * @param bPos The center of the block.
+     * @return True/false.
+     */
     public boolean checkBlock(Vec3 bPos) {
         Vec3 pPos = player.position();
 
@@ -173,17 +229,30 @@ public class PacketHandler extends ChannelDuplexHandler {
         }
 
         // ray cast
-        if (!FastRayCast.blockRayCastNonSolid(bPos, pPos,
-                // todo: cache block accesses
-                //  because this will make a lot of instances
-                //  and is probably slow as fuck lol
-                FastRayCast.blockAccessOf(player.getLevel())
-        )) {
+        if (!FastRayCast.blockRayCastNonSolid(bPos, pPos.add(0, 0.8, 0),
+                blockAccess)) {
             return false;
         }
 
         // return permitted
         return true;
+    }
+
+    /**
+     * Handles a set position packet.
+     *
+     * Required for sending the tile entities
+     * once they become visible.
+     *
+     * @param packet The packets.
+     */
+    public void handleSetPosition(ClientboundPlayerPositionPacket packet) {
+        double x = packet.getX();
+        double y = packet.getY();
+        double z = packet.getZ();
+        if (anyHidden((int)(((long)x) >> 4), (int)(((long)z) >> 4))) {
+            // TODO: send visible tile entities
+        }
     }
 
 }

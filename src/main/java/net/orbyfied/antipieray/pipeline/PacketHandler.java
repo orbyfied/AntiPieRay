@@ -3,12 +3,19 @@ package net.orbyfied.antipieray.pipeline;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
+import net.minecraft.core.Vec3i;
 import net.minecraft.network.protocol.game.*;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
@@ -17,7 +24,9 @@ import net.orbyfied.antipieray.AntiPieRayConfig;
 import net.orbyfied.antipieray.math.FastRayCast;
 import net.orbyfied.antipieray.reflect.UnsafeField;
 import net.orbyfied.antipieray.reflect.UnsafeReflector;
+import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -48,6 +57,13 @@ public class PacketHandler extends ChannelDuplexHandler {
             UnsafeReflector.get().getField(ClientboundLevelChunkPacketData.class.getName() + "$a",
                     "c");
 
+    private static final Object OBJECT = new Object();
+
+    // the amount of chunks of distance
+    // to account for when doing ranged
+    // checks and queries
+    private static final int TILE_ENTITY_DISTANCE = 2;
+
     //////////////////////////////////////////
 
     public PacketHandler(Injector injector,
@@ -71,9 +87,71 @@ public class PacketHandler extends ChannelDuplexHandler {
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+        if (msg instanceof ClientboundPlayerPositionPacket packet) {
+            handleSetPosition(packet);
+        }
+
         if (allowPacket(msg)) {
             super.write(ctx, msg, promise);
         }
+    }
+
+    @Override
+    public void channelRead(@NotNull ChannelHandlerContext ctx, @NotNull Object msg) throws Exception {
+        if (msg instanceof ServerboundMovePlayerPacket packet) {
+            handleMove(packet);
+        }
+    }
+
+    // local chunk data for a chunk
+    // stores data like the amount of
+    // hidden entities, used by
+    // the packet handler
+    class ChunkData {
+        public IntOpenHashSet hiddenEntities = new IntOpenHashSet();
+
+        // mark an entity as hidden
+        // by adding it to the set
+        public void addHidden(int packed) {
+            hiddenEntities.add(packed);
+        }
+
+        // mark an entity as shown
+        // by removing it from the set
+        public void removeHidden(int packed) {
+            hiddenEntities.remove(packed);
+        }
+    }
+
+    // packs chunk x and z into a long
+    static long packChunkPos(int cx, int cz) {
+        return (long)cx | (long)cz >> 32;
+    }
+
+    // packs position x, y and z into a long
+    // packed format: (1char1byte) x-yy-z
+    static int packBlockPos(int x, int y, int z) {
+        return x | y >> 8 | z >> (8 + 16);
+    }
+
+    // unpacks position x, y and z from a long
+    // to a vec3i packed format: (1char1byte) x-yy-z
+    static Vec3i unpackBlockPos(int packed) {
+        int x = packed & 0xFF;   packed <<= 8;
+        int y = packed & 0xFFFF; packed <<= 16;
+        int z = packed & 0xFF;
+        return new Vec3i(x, y, z);
+    }
+
+    // unpacks position x, y and z from a long
+    // and calculates that over into a block pos
+    // using the provided chunkX*16 and chunkZ*16 parameters
+    // to a vec3i packed format: (1char1byte) x-yy-z
+    static BlockPos unpackAndCalcBlockPos(long cuX16, long cuZ16, int packed) {
+        long x = (long)(packed & 0xFF)  * cuX16; packed <<= 8;
+        long y =        packed & 0xFFFF        ; packed <<= 16;
+        long z = (long)(packed & 0xFF)  * cuZ16;
+        return new BlockPos(x, y, z);
     }
 
     // the world access
@@ -83,17 +161,108 @@ public class PacketHandler extends ChannelDuplexHandler {
     // TODO: use position instead of just checking
     //  a boolean
     AtomicBoolean hidden = new AtomicBoolean(false);
+    // the chunks (by packed position) that
+    // have hidden entities and data
+    Long2ObjectOpenHashMap<ChunkData> chunkDataMap = new Long2ObjectOpenHashMap();
 
     /**
-     * Get if any tile entities have been hidden
-     * in range of the given chunk by position.
+     * Update a range of chunks around the given
+     * chunk including itself for the player.
+     *
+     * This does things like re-check hidden
+     * block entities and show them.
      *
      * @param cx The chunk X.
      * @param cz The chunk Z.
-     * @return If any block entities have been hidden in range of this chunk.
      */
-    public boolean anyHidden(int cx, int cz) {
-        return hidden.get();
+    public void updateChunkView(int cx, int cz) {
+        // the blocks to be shown
+        List<BlockPos> toShow = new ArrayList<>();
+
+        // for every chunk in range
+        int sx = cx - TILE_ENTITY_DISTANCE;
+        int sz = cz - TILE_ENTITY_DISTANCE;
+        int ex = cx + TILE_ENTITY_DISTANCE;
+        int ez = cz + TILE_ENTITY_DISTANCE;
+        for (int cuX = sx; cuX <= ex; cuX++) {
+            long cuX16 = cuX * 16L;
+            for (int cuZ = sz; cuZ <= ez; cuZ++) {
+                long cuZ16 = cuZ * 16L;
+
+                // pack position
+                long packedChunkPos = packChunkPos(cuX, cuZ);
+
+                // get chunk data
+                ChunkData chunkData = chunkDataMap.get(packedChunkPos);
+                if (chunkData == null)
+                    continue;
+
+                // iterate over hidden entities
+                for (int packedBlockPos : chunkData.hiddenEntities) {
+                    // unpack position and calculate
+                    // absolute block position
+                    BlockPos bPos = unpackAndCalcBlockPos(cuX16, cuZ16, packedBlockPos);
+                    Vec3 cbPos = bPos.getCenter();
+
+                    // re-check block
+                    if (checkBlock(cbPos)) {
+                        // queue tile entity packet
+                        toShow.add(bPos);
+                    }
+                }
+            }
+        }
+
+        // send blocks to be shown to player
+        final int l = toShow.size();
+        if (l != 0) {
+            final ServerLevel level = player.getLevel();
+            final ServerGamePacketListenerImpl connection = player.connection;
+            for (int i = 0; i < l; i++) {
+                BlockPos bPos = toShow.get(i);
+
+                // get block entity
+                BlockEntity entity = level.getBlockEntity(bPos);
+                if (entity == null)
+                    continue;
+
+                // send tile entity packet
+                ClientboundBlockEntityDataPacket packet =
+                        ClientboundBlockEntityDataPacket.create(entity);
+                connection.send(packet);
+            }
+        }
+    }
+
+    /**
+     * Get the local chunk data for the
+     * given coordinates, can be null.
+     *
+     * @param cx The chunk X.
+     * @param cz The chunk Z.
+     * @return The data or null if absent.
+     */
+    public ChunkData getChunkData(int cx, int cz) {
+        return chunkDataMap.get(packChunkPos(cx, cz));
+    }
+
+    /**
+     * Get or create the local chunk data for the
+     * given coordinates, can be null.
+     *
+     * @param cx The chunk X.
+     * @param cz The chunk Z.
+     * @return The data or null if absent.
+     */
+    public ChunkData getOrCreateChunkData(int cx, int cz) {
+        long packed = packChunkPos(cx, cz);
+        ChunkData data = chunkDataMap.get(packed);
+        if (data == null) {
+            data = new ChunkData();
+            chunkDataMap.put(packed, data);
+        }
+
+        return data;
     }
 
     /**
@@ -104,8 +273,15 @@ public class PacketHandler extends ChannelDuplexHandler {
      * @param cz The chunk Y.
      * @param value The value to set.
      */
-    public void markHidden(int cx, int cz, boolean value) {
-        hidden.set(true);
+    public void markHidden(int cx, int cz, int tx, int ty, int tz, boolean value) {
+        if (value)
+            getOrCreateChunkData(cx, cz).addHidden(packBlockPos(tx, ty, tz));
+        else {
+            ChunkData data = getChunkData(cx, cz);
+            if (data != null) {
+                data.removeHidden(packBlockPos(tx, ty, tz));
+            }
+        }
     }
 
     /**
@@ -206,8 +382,10 @@ public class PacketHandler extends ChannelDuplexHandler {
         if (!v) {
             int cx = (int)(((long)bPos.x) >> 4);
             int cz = (int)(((long)bPos.z) >> 4);
+            int tx = (int)(bPos.x) % 16;
+            int tz = (int)(bPos.z) % 16;
 
-            markHidden(cx, cz, true);
+            markHidden(cx, cz, tx, (int)bPos.y, tz, true);
         }
 
         return v;
@@ -248,11 +426,24 @@ public class PacketHandler extends ChannelDuplexHandler {
      */
     public void handleSetPosition(ClientboundPlayerPositionPacket packet) {
         double x = packet.getX();
-        double y = packet.getY();
         double z = packet.getZ();
-        if (anyHidden((int)(((long)x) >> 4), (int)(((long)z) >> 4))) {
-            // TODO: send visible tile entities
-        }
+
+        updateChunkView((int)((long)x >> 4), (int)((long)z >> 4));
+    }
+
+    /**
+     * Handles a move packet.
+     *
+     * Required for sending the tile entities
+     * once they become visible.
+     *
+     * @param packet The packets.
+     */
+    public void handleMove(ServerboundMovePlayerPacket packet) {
+        double x = packet.getX(player.getX());
+        double z = packet.getZ(player.getZ());
+
+        updateChunkView((int)((long)x >> 4), (int)((long)z >> 4));
     }
 
 }

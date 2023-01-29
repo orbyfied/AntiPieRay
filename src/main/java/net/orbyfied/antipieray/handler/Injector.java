@@ -1,4 +1,4 @@
-package net.orbyfied.antipieray.pipeline;
+package net.orbyfied.antipieray.handler;
 
 import net.minecraft.server.level.ServerPlayer;
 import net.orbyfied.antipieray.AntiPieRay;
@@ -19,7 +19,7 @@ public class Injector {
     }
 
     // the packet handlers by player
-    final Map<UUID, PacketHandler> handlerMap = new HashMap<>();
+    final Map<UUID, PlayerBlockEntityHandler> handlerMap = new HashMap<>();
 
     /**
      * Instantiates, injects and enables the
@@ -32,7 +32,7 @@ public class Injector {
         ServerPlayer nmsPlayer = NmsHelper.getPlayerHandle(player);
 
         // create handler
-        PacketHandler packetHandler = new PacketHandler(this, nmsPlayer);
+        PlayerBlockEntityHandler packetHandler = new PlayerBlockEntityHandler(this, nmsPlayer);
         handlerMap.put(player.getUniqueId(), packetHandler);
 
         // inject handler
@@ -51,7 +51,7 @@ public class Injector {
         handlerMap.remove(player.getUniqueId());
     }
 
-    public PacketHandler getHandler(Player player) {
+    public PlayerBlockEntityHandler getHandler(Player player) {
         return handlerMap.get(player.getUniqueId());
     }
 

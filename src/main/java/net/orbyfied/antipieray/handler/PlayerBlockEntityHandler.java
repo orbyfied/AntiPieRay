@@ -1,11 +1,10 @@
-package net.orbyfied.antipieray.pipeline;
+package net.orbyfied.antipieray.handler;
 
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.core.Vec3i;
@@ -32,7 +31,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @SuppressWarnings({ "rawtypes" })
-public class PacketHandler extends ChannelDuplexHandler {
+public class PlayerBlockEntityHandler extends ChannelDuplexHandler {
 
     private static final UnsafeField FIELD_BlockUpdatePacket_states =
             UnsafeReflector.get().getField(ClientboundSectionBlocksUpdatePacket.class,
@@ -66,8 +65,8 @@ public class PacketHandler extends ChannelDuplexHandler {
 
     //////////////////////////////////////////
 
-    public PacketHandler(Injector injector,
-                         ServerPlayer player) {
+    public PlayerBlockEntityHandler(Injector injector,
+                                    ServerPlayer player) {
         this.injector = injector;
         this.player   = player;
 

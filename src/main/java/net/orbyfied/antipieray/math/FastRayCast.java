@@ -56,6 +56,11 @@ public class FastRayCast {
      * @return If A can see B.
      */
     public static boolean blockRayCastNonSolid(Vec3 va, Vec3 vb, BlockAccess blockAccess) {
+        // TODO
+        if (true) {
+            return false;
+        }
+
         // separate components of A and B
         // and order correctly, as certain
         // components of B might be smaller

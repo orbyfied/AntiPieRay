@@ -30,6 +30,8 @@ public class AntiPieRayConfig {
 
     /* values for fast access */
     public Set<BlockEntityType<?>> checkedBlockEntities;
+    public double alwaysViewDist;
+    public double alwaysViewDistSqr;
 
     /**
      * Reload the configuration.
@@ -47,6 +49,10 @@ public class AntiPieRayConfig {
                     checkedBlockEntities = new HashSet<>();
                     config.getOrSupply("checked-block-entities", (Supplier<ArrayList<String>>) ArrayList::new)
                             .forEach(s -> checkedBlockEntities.add(BuiltInRegistries.BLOCK_ENTITY_TYPE.get(ResourceLocation.of(s, ':'))));
+                }
+                {
+                    alwaysViewDist = config.get("always-view-distance");
+                    alwaysViewDistSqr = alwaysViewDist * alwaysViewDist;
                 }
 
                 // return success

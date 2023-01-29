@@ -11,3 +11,8 @@ checked-block-entities:
   - minecraft:beacon
   - minecraft:barrel
   - minecraft:enchanting_table
+
+# The distance in which to always permit the
+# block entity packets. Set to 0 to ignore this
+# check.
+always-view-distance: 20.0

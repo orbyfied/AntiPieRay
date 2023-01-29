@@ -5,6 +5,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.phys.Vec3;
 import net.orbyfied.antipieray.AntiPieRay;
 import net.orbyfied.antipieray.AntiPieRayConfig;
 import net.orbyfied.antipieray.math.FastRayCast;
@@ -53,6 +54,14 @@ public class PacketHandler extends ChannelDuplexHandler {
             return true;
         }
 
+        Vec3 pPos = player.position();
+        Vec3 bPos = packet.getPos().getCenter();
+
+        // simple distance check
+        if (pPos.distanceToSqr(bPos) < config.alwaysViewDistSqr) {
+            return true;
+        }
+
         // ray cast
         if (!FastRayCast.blockRayCastNonSolid(packet.getPos().getCenter(), player.position(),
                 // todo: cache block accesses
@@ -63,7 +72,7 @@ public class PacketHandler extends ChannelDuplexHandler {
             return false;
         }
 
-        // return false
+        // return permitted
         return true;
     }
 

@@ -36,6 +36,9 @@ public final class AntiPieRay extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        // reload config
+        config.reload();
+
         // enable commands
         {
             AntiPieRayCommand exec = new AntiPieRayCommand(this);

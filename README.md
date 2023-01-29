@@ -18,7 +18,7 @@ when they are invisible to the player.
 > * Check if the block entity type should be checked, this can 
 > be specified in the configuration. if this check fails, the packet
 > will be let through.
-> * Check if the block entities center is within 15 blocks of the
+> * Check if the block entities center is within a set distance of the
 > player.
 > * Check if the block entity is visible to the player utilizing a custom
 > ray cast algorithm you can find in `FastRayCast`.

@@ -1,6 +1,6 @@
 package net.orbyfied.antipieray.config;
 
-import net.orbyfied.coldlib.util.Throwables;
+import net.orbyfied.antipieray.util.Throwables;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;

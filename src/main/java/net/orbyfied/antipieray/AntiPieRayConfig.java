@@ -2,6 +2,7 @@ package net.orbyfied.antipieray;
 
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.orbyfied.antipieray.config.Configuration;
 
@@ -29,9 +30,10 @@ public class AntiPieRayConfig {
     public final Configuration config;
 
     /* values for fast access */
-    public Set<BlockEntityType<?>> checkedBlockEntities;
-    public double alwaysViewDist;
-    public double alwaysViewDistSqr;
+    public volatile Set<BlockEntityType<?>> checkedBlockEntities = new HashSet<>();
+    public volatile Set<Block> checkedBlockTypes = new HashSet<>();
+    public volatile double alwaysViewDist;
+    public volatile double alwaysViewDistSqr;
 
     /**
      * Reload the configuration.
@@ -46,9 +48,15 @@ public class AntiPieRayConfig {
 
                 /* cache values for fast access */
                 {
-                    checkedBlockEntities = new HashSet<>();
+                    checkedBlockEntities.clear();
+                    checkedBlockTypes.clear();
                     config.getOrSupply("checked-block-entities", (Supplier<ArrayList<String>>) ArrayList::new)
-                            .forEach(s -> checkedBlockEntities.add(BuiltInRegistries.BLOCK_ENTITY_TYPE.get(ResourceLocation.of(s, ':'))));
+                            .forEach(s -> {
+                                final ResourceLocation loc = ResourceLocation.of(s, ':');
+
+                                checkedBlockEntities.add(BuiltInRegistries.BLOCK_ENTITY_TYPE.get(loc));
+                                checkedBlockTypes.add(BuiltInRegistries.BLOCK.get(loc));
+                            });
                 }
                 {
                     alwaysViewDist = config.get("always-view-distance");

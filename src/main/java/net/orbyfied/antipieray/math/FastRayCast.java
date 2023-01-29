@@ -41,7 +41,7 @@ public class FastRayCast {
         public boolean isSolid(long x, long y, long z) {
             // get chunk
             LevelChunk chunk = level.getChunk((int)(x >> 4), (int)(z >> 4));
-            return chunk.getBlockState((int)(x % 16), (int)y, (int)(z % 16)).isOpaque();
+            return chunk.getBlockState((int)(x % 16), (int)y, (int)(z % 16)).isOpaque(); // todo: isOpaque is paper api, avoid using
         }
     }
 

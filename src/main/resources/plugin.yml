@@ -12,6 +12,4 @@ libraries:
 # commands
 commands:
   antipieray:
-    aliases: apr
     description: AntiPieRay main command
-    permission: antipieray.admin

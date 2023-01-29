@@ -24,7 +24,13 @@ public class AntiPieRayCommand implements TabExecutor {
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
         if (args.length < 1) {
-            sender.sendMessage(ChatColor.RED + "Please specify a subcommand");
+            sender.sendMessage(PREFIX + "Running " + ChatColor.AQUA + "AntiPieRay " + ChatColor.DARK_GRAY +
+                    "v" + ChatColor.DARK_AQUA + plugin.getDescription().getVersion() +
+                    ChatColor.WHITE + " by " + ChatColor.AQUA + "Orbyfied");
+            return true;
+        }
+
+        if (!sender.hasPermission("antipieray.admin")) {
             return false;
         }
 
@@ -50,6 +56,9 @@ public class AntiPieRayCommand implements TabExecutor {
 
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
+        if (!sender.hasPermission("antipieray.admin"))
+            return List.of();
+
         return List.of(
                 "reload"
         );

@@ -1,0 +1,8 @@
+.idea/
+build/
+.gradle/
+/gradle/wrapper/gradle-wrapper.properties
+
+### SECURITY ###
+/gradle.properties
+/secret-keys.gpg

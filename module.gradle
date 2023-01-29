@@ -1,0 +1,292 @@
+/*
+ *
+ * Cold Collective common module Gradle build script.
+ * This script can and will be used across all projects.
+ *
+ * Can be included into an
+ *
+ * By Orbyfied 2023
+ *
+ */
+
+
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.OpenOption
+import java.nio.file.Path
+import java.nio.file.StandardOpenOption
+
+/* Function Declarations */
+
+/**
+ * Get a property on this module. This will
+ * first attempt to get it on this project,
+ * following the parent chain while it can't
+ * find it set. If no property is ever found,
+ * the default value is returned.
+ *
+ * @param name The name of the property.
+ * @param d The default value.
+ * @return The value or default if absent.
+ */
+/* had to include public cuz otherwise generics fucked it */
+public <T> T propertyOr(String name, Object d) {
+    Project curr = project
+    while (!curr.hasProperty(name)) {
+        curr = curr.parent
+        if (curr == null) {
+            return (T)d
+        }
+    }
+
+    return (T)curr.property(name)
+}
+
+// check if this module requires minecraft (paperweight userdev)
+boolean hasMc() {
+    return propertyOr("hasMC", false)
+}
+
+// check if this module enables testing
+boolean hasTesting() {
+    return propertyOr("hasTesting", false)
+}
+
+// check if this module enables publishing
+boolean hasPublishing() {
+    return plugins.hasPlugin("maven-publish") && plugins.hasPlugin("signing")
+}
+
+// try to get a file in the root project folder
+File fileInRoot(String str) {
+    return new File(project.rootDir, str);
+}
+
+// try to get a patj (file) in the root project folder
+Path pathInRoot(String str) {
+    return project.rootDir.toPath().resolve(str)
+}
+
+/* Properties */
+
+// set group to root project group
+group rootProject.group
+
+/* Minecraft Paperweight Configuration */
+
+if (hasMc()) {
+    // set default minecraft version
+    if (!project.hasProperty("versionMC")) {
+        project.ext {
+            versionMC = rootProject.defaultVersionMC
+        }
+    }
+
+    dependencies {
+        // Minecraft
+        if (project.hasProperty("versionMC")) {
+            paperweightDevelopmentBundle("io.papermc.paper:dev-bundle:" + project.versionMC)
+        }
+    }
+}
+
+/* Plugins */
+
+// apply java plugins
+apply plugin: 'java'
+apply plugin: 'java-library'
+
+// apply shadow
+apply plugin: 'com.github.johnrengelman.shadow'
+
+// apply userdev plugin
+if (hasMc()) {
+    apply plugin: "io.papermc.paperweight.userdev"
+}
+
+/* Task Configuration */
+
+java {
+    // set language version
+    toolchain.languageVersion.set(JavaLanguageVersion.of(this.<Integer>propertyOr("languageVersion", 17)))
+}
+
+java {
+    /// include javadoc and sources
+    if (plugins.hasPlugin("java-library")) {
+        withJavadocJar()
+        withSourcesJar()
+    }
+}
+
+if (plugins.hasPlugin("java-library")) {
+    javadoc {
+        boolean verbose = false
+        if (project.hasProperty("jdVerbose"))
+            verbose = jdVerbose
+        options.outputLevel = verbose ? JavadocOutputLevel.VERBOSE : JavadocOutputLevel.QUIET
+        if (JavaVersion.current().isJava9Compatible()) {
+            options.addBooleanOption("html5", true)
+        }
+    }
+}
+
+// make sure publish depends
+// on build if publishing is enabled
+if (hasPublishing()) {
+    publish.dependsOn.add(tasks.jar)
+}
+
+// configure shadow
+assemble {
+    dependsOn(shadowJar) }
+
+// paperweight
+if (hasMc()) {
+    assemble { dependsOn(shadowJar, reobfJar) }
+}
+
+compileJava {
+    options.encoding = 'UTF-8'
+    options.release.set(17) }
+javadoc {
+    options.encoding = 'UTF-8' }
+processResources {
+    filteringCharset = 'UTF-8' }
+
+
+tasks {
+    String mcS = ""
+    if (hasMc())
+        mcS = "+" + project.versionMC
+    String fn = project.name + "-" + project.version + mcS + ".jar"
+    outputFile(fileInRoot("builds/" + fn))
+}
+
+/* General Dependencies */
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+
+    // we are also publishing to this repo
+    maven { url = 'https://s01.oss.sonatype.org/content/repositories/releases/' }
+}
+
+dependencies {
+
+    // External Libraries
+//    compileOnlyApi 'it.unimi.dsi:fastutil:8.5.8'
+
+//    compileOnlyApi 'net.orbyfied.j8:j8-util:0.2.1.3'
+
+    // Test Dependencies
+    if (hasTesting()) {
+        testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
+        testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
+    }
+}
+
+/* Test Configuration */
+
+if (hasTesting()) {
+    test {
+        // enable JUnit for testing
+        useJUnitPlatform()
+    }
+}
+
+
+/* Publishing */
+
+if (hasPublishing()) {
+
+    publishing {
+
+        publications {
+
+            mavenJava(MavenPublication) {
+
+                // publication properties
+                groupId = project.group
+                artifactId = project.name
+                version = project.version
+
+                // include java code
+                from components.java
+
+                pom {
+                    // pom.xml properties
+                    name = project.name
+
+                    String descStr = propertyOr("desc", null)
+                    description = rootProject.name + " Module " + project.name + (descStr != null ? " - " + descStr : "")
+
+                    url = propertyOr("projectUrl", "")
+                    inceptionYear = "" + new Date().getYear()
+
+                    // licensing
+                    licenses {
+                        String[] licenses = propertyOr("licenses", null);
+                        if (licenses != null) {
+                            for (String l : licenses) {
+                                String[] split = l.split(";")
+                                license {
+                                    name = split[0]
+                                    url  = split[1]
+                                }
+                            }
+                        }
+                    }
+
+                    // developers
+                    developers {
+                        String[] devs = propertyOr("developers", null);
+                        if (devs != null) {
+                            for (String dev : devs) {
+                                String[] split = dev.split(" ")
+                                developer {
+                                    id = split[0]
+                                    name = split[1]
+                                    email = ""
+                                }
+                            }
+                        }
+                    }
+
+                    // SCM
+                    scm {
+                        String scmBaseUrl = propertyOr("scmBaseUrl", null)
+
+                        connection = "scm:git:git:" + scmBaseUrl
+                        developerConnection = "scm:git:ssh://" + scmBaseUrl
+                        url = "https://" + scmBaseUrl
+                    }
+
+                }
+
+            }
+
+        }
+
+        // publishing repositories
+        repositories {
+            // Maven Central
+            maven {
+                name = "OSSRH"
+                url = "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2"
+                credentials {
+                    username = project.properties["ossrh.username"]
+                    password = project.properties["ossrh.password"]
+                }
+            }
+        }
+
+    }
+
+    // Publication Signing
+    signing {
+        sign publishing.publications.mavenJava
+    }
+
+}

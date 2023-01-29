@@ -1,0 +1,17 @@
+# properties
+name: AntiPieRay
+version: 1.0.0
+main: net.orbyfied.antipieray.AntiPieRay
+description: Tries to prevent players from using the PieRay tactic by blocking packets
+api-version: 1.19
+
+# libraries
+libraries:
+  - net.orbyfied.j8:j8-util:0.2.2.1
+
+# commands
+commands:
+  antipieray:
+    aliases: apr
+    description: AntiPieRay main command
+    permission: antipieray.admin

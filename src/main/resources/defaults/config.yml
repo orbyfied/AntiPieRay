@@ -1,0 +1,13 @@
+###
+### AntiPieRay Main Configuration File
+### by Orbyfied 2023
+###
+
+# The checked block entities by Minecraft
+# namespaced key.
+checked-block-entities:
+  - minecraft:ender_chest
+  - minecraft:banner
+  - minecraft:beacon
+  - minecraft:barrel
+  - minecraft:enchanting_table

@@ -177,6 +177,7 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler implements Li
 
     // the current world access
     FastRayCast.BlockAccess blockAccess;
+    ServerLevel currentBlockAccessWorld;
 
     // the chunks (by packed position) that
     // have hidden entities and data
@@ -314,9 +315,9 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler implements Li
      * @param value The value to set.
      */
     public void markHidden(int cx, int cz, int tx, int ty, int tz, boolean value) {
-        if (value)
+        if (value) {
             getOrCreateChunkData(cx, cz).addHidden(packBlockPos(tx, ty, tz));
-        else {
+        } else {
             ChunkData data = getChunkData(cx, cz);
             if (data != null) {
                 data.removeHidden(packBlockPos(tx, ty, tz));
@@ -331,7 +332,11 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler implements Li
      * @return True/false. If false it will be dropped.
      */
     public boolean allowPacket(Object objectPacket) {
-        blockAccess = FastRayCast.blockAccessOf(player.getLevel());
+        ServerLevel level = player.getLevel();
+        if (currentBlockAccessWorld != level) {
+            blockAccess = FastRayCast.blockAccessOf(player.getLevel());
+            currentBlockAccessWorld = level;
+        }
 
         // check packet type
         // and get data
@@ -451,8 +456,7 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler implements Li
             return false;
 
         // ray cast
-        if (!FastRayCast.blockRayCastNonSolid(bPos, pPos.add(0, 0.8, 0),
-                blockAccess)) {
+        if (!FastRayCast.blockRayCastNonSolid(bPos, pPos.add(0, 0.8, 0), blockAccess)) {
             return false;
         }
 

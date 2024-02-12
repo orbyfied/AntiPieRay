@@ -3,6 +3,7 @@ package net.orbyfied.antipieray.handler;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
+import it.unimi.dsi.fastutil.ints.IntIterator;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import net.minecraft.core.BlockPos;
@@ -23,15 +24,20 @@ import net.orbyfied.antipieray.AntiPieRayConfig;
 import net.orbyfied.antipieray.math.FastRayCast;
 import net.orbyfied.antipieray.reflect.UnsafeField;
 import net.orbyfied.antipieray.reflect.UnsafeReflector;
+import org.bukkit.Bukkit;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @SuppressWarnings({ "rawtypes" })
-public class PlayerBlockEntityHandler extends ChannelDuplexHandler {
+public class PlayerBlockEntityHandler extends ChannelDuplexHandler implements Listener {
 
     private static final UnsafeField FIELD_BlockUpdatePacket_states =
             UnsafeReflector.get().getField(ClientboundSectionBlocksUpdatePacket.class,
@@ -72,17 +78,24 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler {
 
         this.plugin = injector.plugin;
         this.config = plugin.config();
+
+        Bukkit.getPluginManager().registerEvents(this, plugin);
     }
 
     // the injector
-    private final Injector injector;
+    protected final Injector injector;
 
     // the player object
-    private final ServerPlayer player;
+    protected final ServerPlayer player;
 
     // the config
-    private final AntiPieRay plugin;
-    private final AntiPieRayConfig config;
+    protected final AntiPieRay plugin;
+    protected final AntiPieRayConfig config;
+
+    @Override
+    public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
+        HandlerList.unregisterAll(this);
+    }
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
@@ -102,11 +115,20 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler {
         }
     }
 
+    public Long2ObjectOpenHashMap<ChunkData> getChunkDataMap() {
+        return chunkDataMap;
+    }
+
+    public ServerPlayer getPlayer() {
+        return player;
+    }
+
     // local chunk data for a chunk
     // stores data like the amount of
     // hidden entities, used by
     // the packet handler
-    class ChunkData {
+    public static class ChunkData {
+        public long pos;
         public IntOpenHashSet hiddenEntities = new IntOpenHashSet();
 
         // mark an entity as hidden
@@ -153,13 +175,9 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler {
         return new BlockPos(x, y, z);
     }
 
-    // the world access
+    // the current world access
     FastRayCast.BlockAccess blockAccess;
-    // if any entities have been
-    // hidden for this player
-    // TODO: use position instead of just checking
-    //  a boolean
-    AtomicBoolean hidden = new AtomicBoolean(false);
+
     // the chunks (by packed position) that
     // have hidden entities and data
     Long2ObjectOpenHashMap<ChunkData> chunkDataMap = new Long2ObjectOpenHashMap();
@@ -188,6 +206,8 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler {
             for (int cuZ = sz; cuZ <= ez; cuZ++) {
                 long cuZ16 = cuZ * 16L;
 
+                System.out.println("updateChunkView Chunk: cuX(" + cuX + ") cuZ(" + cuZ + ")");
+
                 // pack position
                 long packedChunkPos = packChunkPos(cuX, cuZ);
 
@@ -196,22 +216,42 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler {
                 if (chunkData == null)
                     continue;
 
-                // iterate over hidden entities
-                for (int packedBlockPos : chunkData.hiddenEntities) {
-                    // unpack position and calculate
-                    // absolute block position
-                    BlockPos bPos = unpackAndCalcBlockPos(cuX16, cuZ16, packedBlockPos);
-                    Vec3 cbPos = bPos.getCenter();
-
-                    // re-check block
-                    if (checkBlock(cbPos)) {
-                        // queue tile entity packet
-                        toShow.add(bPos);
-                    }
-                }
+                findDisplayedTileEntitiesInChunk(chunkData, toShow);
             }
         }
 
+        showTileEntities(toShow);
+    }
+
+    /**
+     * Find all tile entities to show in the given chunk and add them
+     * to the buffer
+     */
+    public void findDisplayedTileEntitiesInChunk(ChunkData chunkData, List<BlockPos> toShow) {
+        long packedChunkPos = chunkData.pos;
+
+        int cz = (int) (packedChunkPos);
+        int cx = (int) (packedChunkPos << 32);
+
+        int cuX16 = cx * 16;
+        int cuZ16 = cz * 16;
+
+        // iterate over hidden entities
+        IntIterator iterator = chunkData.hiddenEntities.iterator();
+        for (int packedBlockPos = iterator.nextInt(); iterator.hasNext(); packedBlockPos = iterator.nextInt()) {
+            // unpack position and calculate absolute block position
+            BlockPos bPos = unpackAndCalcBlockPos(cuX16, cuZ16, packedBlockPos);
+            Vec3 cbPos = bPos.getCenter();
+
+            // re-check block
+            if (checkBlock(cbPos)) {
+                toShow.add(bPos);
+                iterator.remove();
+            }
+        }
+    }
+
+    public void showTileEntities(List<BlockPos> toShow) {
         // send blocks to be shown to player
         final int l = toShow.size();
         if (l != 0) {
@@ -258,6 +298,7 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler {
         ChunkData data = chunkDataMap.get(packed);
         if (data == null) {
             data = new ChunkData();
+            data.pos = packed;
             chunkDataMap.put(packed, data);
         }
 
@@ -401,9 +442,13 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler {
         Vec3 pPos = player.position();
 
         // simple distance check
+        System.out.println("pPos: " + pPos + ", bPos: " + bPos);
         if (pPos.distanceToSqr(bPos) < config.alwaysViewDistSqr) {
             return true;
         }
+
+        if (true)
+            return false;
 
         // ray cast
         if (!FastRayCast.blockRayCastNonSolid(bPos, pPos.add(0, 0.8, 0),
@@ -443,6 +488,23 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler {
         double z = packet.getZ(player.getZ());
 
         updateChunkView((int)((long)x >> 4), (int)((long)z >> 4));
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    void onBlockBreak(BlockBreakEvent event) {
+        org.bukkit.block.Block block = event.getBlock();
+
+        BlockPos blockPos = new BlockPos(block.getX(), block.getY(), block.getZ());
+        int cx = blockPos.getX() >> 4;
+        int cz = blockPos.getZ() >> 4;
+
+        // update tile entities in the affected chunk
+        ChunkData chunkData = getChunkData(cx, cz);
+        if (chunkData != null && !chunkData.hiddenEntities.isEmpty()) {
+            List<BlockPos> toShow = new ArrayList<>();
+            findDisplayedTileEntitiesInChunk(chunkData, toShow);
+            showTileEntities(toShow);
+        }
     }
 
 }

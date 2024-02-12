@@ -31,4 +31,7 @@ repositories {
 dependencies {
     compileOnly 'net.orbyfied.j8:j8-util:0.2.2.1'
     compileOnly 'it.unimi.dsi:fastutil:8.5.8'
+
+//    compileOnly 'org.projectlombok:lombok:1.18.28'
+//    annotationProcessor 'org.projectlombok:lombok:1.18.28'
 }

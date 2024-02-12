@@ -448,7 +448,7 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler implements Li
      * @return True/false.
      */
     public boolean checkBlock(Vec3 bPos) {
-        Vec3 pPos = player.position();
+        Vec3 pPos = player.getEyePosition();
 
         // simple distance check
         System.out.println("pPos: " + pPos + ", bPos: " + bPos);
@@ -456,7 +456,11 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler implements Li
             return true;
         }
 
-        return FastRayCast.checkVisibilityOfPositionFromOrigin(bPos, pPos.add(0, 0.8, 0), blockAccess);
+        // take the block center as the origin, the reasoning for this is
+        // to be able to abort the ray cast asap if the block is directly obstructed
+        // by any of its neighbours which is much more likely than the player looking
+        // into a wall
+        return FastRayCast.checkVisibilityOfPositionFromOrigin(bPos, pPos, blockAccess);
     }
 
     private boolean checkMovementUpdate(double x, double y, double z) {

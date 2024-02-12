@@ -2,7 +2,7 @@
 name: AntiPieRay
 version: 1.0.0
 main: net.orbyfied.antipieray.AntiPieRay
-description: Tries to prevent players from using the PieRay tactic by blocking packets
+description: Attempts to prevent the usage of the PieRay exploit to find bases.
 api-version: 1.19
 
 # libraries

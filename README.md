@@ -1,6 +1,5 @@
 # AntiPieRay
-Attempts to block usage of the F3 debug pie chart as an exploit for  
-base finding by preventing players from rendering specific block entities
+Attempts to prevent usage of the F3 debug pie chart as an exploit for base finding by preventing players from rendering specific block entities
 when they are invisible to the player.
 
 ### Technical Details

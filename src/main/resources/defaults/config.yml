@@ -3,8 +3,8 @@
 ### by Orbyfied 2023
 ###
 
-# The checked block entities by Minecraft
-# namespaced key.
+# The block entities to be checked, listed by
+# Minecraft namespaced key/identifier.
 checked-block-entities:
   - minecraft:ender_chest
   - minecraft:banner
@@ -12,7 +12,6 @@ checked-block-entities:
   - minecraft:barrel
   - minecraft:enchanting_table
 
-# The distance in which to always permit the
-# block entity packets. Set to 0 to ignore this
-# check.
-always-view-distance: 20.0
+# The distance a checked tile entity has to lie within to
+# be sent regardless of obstruction.
+always-view-distance: 5.0

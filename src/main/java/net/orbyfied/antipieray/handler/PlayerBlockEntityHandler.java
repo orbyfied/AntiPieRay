@@ -69,6 +69,8 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler implements Li
     // checks and queries
     private static final int TILE_ENTITY_DISTANCE = 2;
 
+    private static final double MOVEMENT_UPDATE_THRESHOLD_SQR = 4.0;
+
     //////////////////////////////////////////
 
     public PlayerBlockEntityHandler(Injector injector,
@@ -91,6 +93,8 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler implements Li
     // the config
     protected final AntiPieRay plugin;
     protected final AntiPieRayConfig config;
+
+    Vec3 lastUpdatedPosition;
 
     @Override
     public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
@@ -452,15 +456,24 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler implements Li
             return true;
         }
 
-        if (true)
-            return false;
-
         // ray cast
         if (!FastRayCast.blockRayCastNonSolid(bPos, pPos.add(0, 0.8, 0), blockAccess)) {
             return false;
         }
 
         // return permitted
+        return true;
+    }
+
+    private boolean checkMovementUpdate(double x, double y, double z) {
+        Vec3 newPos = new Vec3(x, y, z);
+        if (lastUpdatedPosition != null) {
+            if (lastUpdatedPosition.distanceToSqr(newPos) < MOVEMENT_UPDATE_THRESHOLD_SQR) {
+                return false;
+            }
+        }
+
+        lastUpdatedPosition = newPos;
         return true;
     }
 
@@ -474,7 +487,9 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler implements Li
      */
     public void handleSetPosition(ClientboundPlayerPositionPacket packet) {
         double x = packet.getX();
+        double y = packet.getY();
         double z = packet.getZ();
+        if (!checkMovementUpdate(x, y, z)) return;
 
         updateChunkView((int)((long)x >> 4), (int)((long)z >> 4));
     }
@@ -489,7 +504,9 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler implements Li
      */
     public void handleMove(ServerboundMovePlayerPacket packet) {
         double x = packet.getX(player.getX());
+        double y = packet.getY(player.getY());
         double z = packet.getZ(player.getZ());
+        if (!checkMovementUpdate(x, y, z)) return;
 
         updateChunkView((int)((long)x >> 4), (int)((long)z >> 4));
     }

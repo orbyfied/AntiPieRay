@@ -456,13 +456,7 @@ public class PlayerBlockEntityHandler extends ChannelDuplexHandler implements Li
             return true;
         }
 
-        // ray cast
-        if (!FastRayCast.blockRayCastNonSolid(bPos, pPos.add(0, 0.8, 0), blockAccess)) {
-            return false;
-        }
-
-        // return permitted
-        return true;
+        return FastRayCast.checkVisibilityOfPositionFromOrigin(bPos, pPos.add(0, 0.8, 0), blockAccess);
     }
 
     private boolean checkMovementUpdate(double x, double y, double z) {

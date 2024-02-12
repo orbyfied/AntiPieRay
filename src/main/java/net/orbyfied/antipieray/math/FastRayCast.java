@@ -51,6 +51,7 @@ public class FastRayCast {
     public static final double STEP_SIZE_OPT_THRESHOLD_SQR = STEP_SIZE_OPT_THRESHOLD * STEP_SIZE_OPT_THRESHOLD;
 
     /**
+     * Checks whether position B is visible from position A, the origin.
      *
      * @param va Location A.
      * @param vb Location B.
@@ -58,7 +59,7 @@ public class FastRayCast {
      *                    the block states in certain positions.
      * @return If A can see B.
      */
-    public static boolean blockRayCastNonSolid(Vec3 va, Vec3 vb, BlockAccess blockAccess) {
+    public static boolean checkVisibilityOfPositionFromOrigin(Vec3 va, Vec3 vb, BlockAccess blockAccess) {
         // separate components of A and B
         // and order correctly, as certain
         // components of B might be smaller
